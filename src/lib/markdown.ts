@@ -1,10 +1,6 @@
-import fs from 'fs';
-import path from 'path';
-import matter from 'gray-matter';
 import { marked } from 'marked';
 import readingTime from 'reading-time';
-
-const postsDirectory = path.join(process.cwd(), 'content/posts');
+import { supabase } from '@/lib/supabase';
 
 export interface PostMeta {
   title: string;
@@ -19,56 +15,78 @@ export interface Post extends PostMeta {
   content: string;
 }
 
-export function getPostSlugs() {
-  if (!fs.existsSync(postsDirectory)) return [];
-  return fs.readdirSync(postsDirectory);
+export async function getPostSlugs() {
+  const { data, error } = await supabase.from('posts').select('slug');
+  if (error) return [];
+  return data.map((row) => row.slug);
 }
 
-export function getPostBySlug(slug: string): Post {
-  const realSlug = slug.replace(/\.md$/, '');
-  const fullPath = path.join(postsDirectory, `${realSlug}.md`);
-  const fileContents = fs.readFileSync(fullPath, 'utf8');
-  const { data, content } = matter(fileContents);
-  
-  const htmlContent = marked.parse(content) as string;
-  const time = readingTime(content);
+export async function getPostBySlug(slug: string): Promise<Post> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select('*')
+    .eq('slug', slug)
+    .single();
+
+  if (error || !data) {
+    throw new Error('Post not found');
+  }
+
+  const htmlContent = marked.parse(data.content || '') as string;
+  const time = readingTime(data.content || '');
 
   return {
-    slug: realSlug,
+    slug: data.slug,
     title: data.title,
-    date: data.date,
-    summary: data.summary,
+    date: data.created_at,
+    summary: data.summary || '',
     tags: data.tags || [],
-    readingTime: time.text,
+    readingTime: data.reading_time || time.text,
     content: htmlContent,
   };
 }
 
-export function getRawPostBySlug(slug: string): Post {
-  const realSlug = slug.replace(/\.md$/, '');
-  const fullPath = path.join(postsDirectory, `${realSlug}.md`);
-  const fileContents = fs.readFileSync(fullPath, 'utf8');
-  const { data, content } = matter(fileContents);
-  const time = readingTime(content);
+export async function getRawPostBySlug(slug: string): Promise<Post> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select('*')
+    .eq('slug', slug)
+    .single();
+
+  if (error || !data) {
+    throw new Error('Post not found');
+  }
+
+  const time = readingTime(data.content || '');
 
   return {
-    slug: realSlug,
+    slug: data.slug,
     title: data.title,
-    date: data.date,
-    summary: data.summary,
+    date: data.created_at,
+    summary: data.summary || '',
     tags: data.tags || [],
-    readingTime: time.text,
-    content: content // UNCOMPILED RAW MARKDOWN!
+    readingTime: data.reading_time || time.text,
+    content: data.content,
   };
 }
 
-export function getAllPosts(): PostMeta[] {
-  const slugs = getPostSlugs();
-  const posts = slugs
-    .map((slug) => getPostBySlug(slug))
-    // sort posts by date in descending order
-    .sort((post1, post2) => (post1.date > post2.date ? -1 : 1));
-  
-  // We don't need to return full content for all posts
-  return posts.map(({ content, ...meta }) => meta);
+export async function getAllPosts(): Promise<PostMeta[]> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error || !data) return [];
+
+  return data.map((row) => {
+    const time = readingTime(row.content || '');
+    return {
+      slug: row.slug,
+      title: row.title,
+      date: row.created_at,
+      summary: row.summary || '',
+      tags: row.tags || [],
+      readingTime: row.reading_time || time.text,
+    };
+  });
 }

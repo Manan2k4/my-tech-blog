@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import fs from 'fs'
-import path from 'path'
+import { supabase } from '@/lib/supabase'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
@@ -8,14 +7,25 @@ export async function GET(req: Request) {
 
   if (!slug) return NextResponse.json({ error: 'Slug is required' }, { status: 400 })
 
-  const commentsPath = path.join(process.cwd(), `content/comments/${slug}.json`)
-  
-  if (!fs.existsSync(commentsPath)) {
-    return NextResponse.json([]) // No comments yet
+  const { data, error } = await supabase
+    .from('comments')
+    .select('*')
+    .eq('post_slug', slug)
+    .order('created_at', { ascending: true })
+    
+  if (error || !data) {
+    return NextResponse.json([]) // No comments yet or error
   }
 
-  const fileContents = fs.readFileSync(commentsPath, 'utf8')
-  return NextResponse.json(JSON.parse(fileContents))
+  // Map to the object shape the frontend expects
+  const formattedComments = data.map((comment: any) => ({
+    id: comment.id,
+    name: comment.name,
+    content: comment.content,
+    date: comment.created_at
+  }))
+
+  return NextResponse.json(formattedComments)
 }
 
 export async function POST(req: Request) {
@@ -26,27 +36,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    const commentsDir = path.join(process.cwd(), 'content/comments')
-    if (!fs.existsSync(commentsDir)) {
-      fs.mkdirSync(commentsDir, { recursive: true })
-    }
+    const safeName = name.replace(/</g, "&lt;")
+    const safeContent = content.replace(/</g, "&lt;")
 
-    const commentsPath = path.join(commentsDir, `${slug}.json`)
-    let comments = []
-    
-    if (fs.existsSync(commentsPath)) {
-      comments = JSON.parse(fs.readFileSync(commentsPath, 'utf8'))
+    const { data, error } = await supabase.from('comments').insert({
+      post_slug: slug,
+      name: safeName,
+      content: safeContent
+    }).select().single()
+
+    if (error) {
+      throw error
     }
 
     const newComment = {
-      id: Date.now().toString(),
-      name: name.replace(/</g, "&lt;"), // Basic XSS prevention
-      content: content.replace(/</g, "&lt;"),
-      date: new Date().toISOString()
+      id: data.id,
+      name: data.name,
+      content: data.content,
+      date: data.created_at
     }
-
-    comments.push(newComment)
-    fs.writeFileSync(commentsPath, JSON.stringify(comments, null, 2))
 
     return NextResponse.json(newComment, { status: 201 })
   } catch (error) {

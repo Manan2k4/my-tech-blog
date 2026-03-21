@@ -3,8 +3,8 @@ import { AdminManagerClient } from '@/app/admin/AdminManagerClient'
 
 export const dynamic = 'force-dynamic'
 
-export default function AdminPage() {
-  const posts = getAllPosts()
+export default async function AdminPage() {
+  const posts = await getAllPosts()
 
   return (
     <div className="max-w-4xl mx-auto py-8">

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import fs from 'fs'
-import path from 'path'
+import { supabase } from '@/lib/supabase'
 
 export async function POST(req: Request) {
   try {
@@ -14,55 +13,33 @@ export async function POST(req: Request) {
     }
 
     if (!title || !content) {
-      return NextResponse.json(
-        { error: 'Title and content are required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Title and content are required' }, { status: 400 })
     }
 
-    // Create a URL-friendly slug
     const slug = title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)+/g, '')
 
-    const date = new Date().toISOString()
-    
-    // Create the markdown file content with frontmatter
-    const mdContent = `---
-title: "${title.replace(/"/g, '\\"')}"
-date: "${date}"
-summary: "${summary ? summary.replace(/"/g, '\\"') : ''}"
-tags: ${JSON.stringify(tags || [])}
----
+    // Insert into supabase
+    const { error } = await supabase.from('posts').insert({
+      slug,
+      title,
+      summary,
+      tags: tags || [],
+      content,
+    })
 
-${content}
-`
-
-    // Ensure directory exists
-    const postsDirectory = path.join(process.cwd(), 'content/posts')
-    if (!fs.existsSync(postsDirectory)) {
-      fs.mkdirSync(postsDirectory, { recursive: true })
+    if (error) {
+      if (error.code === '23505') { // Postgres unique violation code
+        return NextResponse.json({ error: 'A post with a similar title already exists' }, { status: 409 })
+      }
+      throw error
     }
-
-    const filePath = path.join(postsDirectory, `${slug}.md`)
-    
-    // Prevent overwriting existing posts with the exact same title
-    if (fs.existsSync(filePath)) {
-      return NextResponse.json(
-        { error: 'A post with a similar title already exists' },
-        { status: 409 }
-      )
-    }
-
-    fs.writeFileSync(filePath, mdContent, 'utf8')
 
     return NextResponse.json({ success: true, slug }, { status: 201 })
   } catch (error) {
     console.error('Failed to create post:', error)
-    return NextResponse.json(
-      { error: 'Failed to create post' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to create post' }, { status: 500 })
   }
 }

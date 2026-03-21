@@ -6,7 +6,7 @@ export default async function EditPostPage({ params }: { params: Promise<{ slug:
   
   let post
   try {
-    post = getRawPostBySlug(slug)
+    post = await getRawPostBySlug(slug)
   } catch (error) {
     return (
       <div className="max-w-3xl mx-auto py-12 text-center text-red-500 font-bold">

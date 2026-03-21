@@ -3,8 +3,8 @@ export const dynamic = 'force-dynamic'
 import { getAllPosts } from '@/lib/markdown'
 import { HomePageClient } from '@/app/HomePageClient'
 
-export default function Home() {
-  const posts = getAllPosts()
+export default async function Home() {
+  const posts = await getAllPosts()
 
   return (
     <div className="flex flex-col">
